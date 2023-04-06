@@ -5,8 +5,8 @@ A "clone and go" MES project template.
 
 First, clone the repository:
 ```shell
-git clone https://github.com/menga-team/MES-Template   
-mv MES-Template <your_project_name>
+git clone https://github.com/menga-team/MES-Project   
+mv MES-Project <your_project_name>
 cd <your_project_name>
 ```
 
