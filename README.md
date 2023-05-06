@@ -49,15 +49,25 @@ Next, configure this projects mesproj.json to suit your application. It consists
     "name": "<title>",
     "author": "<name>",
     "version": [<major>,<minor>,<patch>],
-    "icon": "<path-to-icon>.m3if",
-    "game": "<path-to-binary>.bin"
+    "icon": "assets/icon.m3ifp",
+    "game": "game.bin"
   }
 }
 ```
 
 Mvm will update your project accoring to the version of the dependencies specified in mesproj.json.
 If you don't particularely require an older commit, we suggest using "latest". The rest is information
-needed when writing your game onto an SD card.
+needed when writing your game onto an SD card, usually there is no need to edit the "icon" and "game" values.
 
 If this is your first MES project, check out the [documentation](https://github.com/menga-team/MES/wiki) on developement for the MES platform.
 For a detailed explanation on the build system or mvm, check their respective repositories or the wiki.
+
+### Changing the icon
+
+To change the icon, just edit the bundeled icon.png file with your favorite image editor!
+
+Your are only able the change the image of the highlighted area:
+
+![img](https://i.imgur.com/DzG6gTt.png)
+
+But you may change the color of the image, make sure to not use more than 8 colors and export as a indexed png.
