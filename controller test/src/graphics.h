@@ -63,7 +63,6 @@ static void surf_destroy(Surface *surf) {
 }
 
 static void surf_set_pixel(Surface* surf, uint8_t x, uint8_t y, uint8_t color) {
-    if (x > surf->w || y > surf->h) return;
     uint16_t pos = SURF_POSITION(surf, x, y);
     uint32_t *pixels = (uint32_t *) (surf->data + (pos / 8) * SURF_BPP);
     uint8_t shift = (7 - (pos % 8)) * SURF_BPP;
@@ -148,19 +147,8 @@ static void surf_fill(Surface* surf, uint8_t color) {
 
 static void surf_draw_surf(Surface* destination_surf, Surface* source_surf, uint8_t x, uint8_t y) {
     for (int i = 0; i < source_surf->height; i++) {
-        for (int j = 0; j < source_surf->width; j++) {\
+        for (int j = 0; j < source_surf->width; j++) {
             surf_set_pixel(destination_surf, j+x, i+y, surf_get_pixel(source_surf, j, i));
-        }
-    }
-}
-
-static void surf_draw_masked_surf(Surface* destination_surf, Surface* source_surf, uint8_t x, uint8_t y, uint8_t mask_color) {
-    for (int i = 0; i < source_surf->height; i++) {
-        for (int j = 0; j < source_surf->width; j++) {\
-            uint8_t color = surf_get_pixel(source_surf, j, i);
-            if (color != mask_color) {
-                surf_set_pixel(destination_surf, j + x, i + y, color);
-            }
         }
     }
 }
