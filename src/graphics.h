@@ -165,10 +165,6 @@ static void surf_draw_masked_surf(Surface* destination_surf, Surface* source_sur
     }
 }
 
-static void surf_draw_surf_alpha(Surface* destination_surf, Surface* source_surf, uint8_t x, uint8_t y, uint8_t alpha_color) {
-
-}
-
 static void surf_draw_rectangle(Surface* surf, uint8_t x, uint8_t y, uint8_t width, uint8_t height, uint8_t color) {
     uint8_t x0, y0, x1, y1;
     x0 = x;
