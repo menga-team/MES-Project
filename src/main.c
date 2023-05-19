@@ -34,12 +34,12 @@
 
 #define GRAVITY 8
 #define GLIDE_SPEED 16
-#define JUMP_HEIGHT 1800
+#define JUMP_HEIGHT 2000
 #define STOMP_SPEED 300
-#define HORIZONTAL_SPEED 60
+#define HORIZONTAL_SPEED 90
 #define NEW_BIT_DELAY 2000
 #define WARNING_DURATION 1000
-#define BLASTER_CHANCE 1
+#define BLASTER_CHANCE 0.1
 #define FLASH_DURATION 50
 #define DESTROIED_BIT_ANIMATION_DURATION 500
 #define LASER_SHOT_DURATION 750
@@ -97,6 +97,7 @@ struct player {
     int32_t y;
     int32_t velx;
     int32_t vely;
+    int32_t stomped_obstacles;
     bool last_up_keystate;
     bool last_down_keystate;
     bool in_air;
@@ -105,13 +106,13 @@ struct player {
 };
 
 struct bit_descturction_animation {
-    uint32_t animation_start;
+    int32_t animation_start;
     int32_t row;
     int32_t column;
 };
 
 struct laser_shot {
-    uint32_t last_shot;
+    int32_t last_shot;
     int32_t row;
     int32_t column;
     int32_t texture;
@@ -123,10 +124,18 @@ struct laser_shot {
 
 bool warning = false;
 bool flash = false;
-uint32_t last_warning_start = 0;
-uint32_t last_flash_start = 0;
-uint32_t interest_column = 0;
+int32_t last_warning_start = 0;
+int32_t last_flash_start = 0;
+int32_t interest_column = 0;
 int32_t cycles = 0;
+int32_t next_block = UNFLIPPED;
+
+int32_t stomped_obstacle_score[6] = {100, 250, 500, 1000, 2500, 5000};
+int32_t stomped_obstacle_adding_score[6] = {1, 5, 11, 23, 43, 83};
+int32_t score = 0;
+int32_t highscore = 0;
+int32_t visualized_score = 0;
+int32_t score_adder = 0;
 
 struct bit_descturction_animation bit_descturction_animations[ROWS * COLUMNS + 1];
 int32_t bit_destruction_animation_array_pointer = 0;
@@ -143,7 +152,7 @@ int32_t bit_blocks[ROWS][COLUMNS] = {
         {AIR, AIR, AIR, AIR, AIR, AIR},
         {AIR, AIR, AIR, AIR, AIR, AIR},
 };
-uint32_t delta;
+int32_t delta;
 
 Surface warning_texture;
 Surface flash_texture;
@@ -179,7 +188,25 @@ void handle_input() {
     p1.last_down_keystate = input_get_button(CONTROLLER, BUTTON_DOWN);
 }
 
-int32_t column_air_amount(uint32_t column) {
+void add_score(int32_t adder) {
+    score += adder;
+    for (int i = 0; i < 6; i++){
+        if (adder < stomped_obstacle_score[i]){
+            score_adder = stomped_obstacle_adding_score[i];
+            break;
+        }
+    }
+}
+
+void update_score(){
+    if (visualized_score + score_adder >= score){
+        visualized_score = score;
+    } else {
+        visualized_score += score_adder;
+    }
+}
+
+int32_t column_air_amount(int32_t column) {
     for (int32_t i = 0; i < ROWS; ++i) {
         if (bit_blocks[i][column] != AIR) {
             return i;
@@ -194,6 +221,10 @@ void spawn_warning() {
     interest_column = rng_u32() % 6;
     warning = true;
     flash = false;
+    if (rng_u32() % (int) (1 / BLASTER_CHANCE) == 0) { next_block = BLASTER; }
+    else {
+        next_block = UNFLIPPED;
+    }
 }
 
 void spawn_flash() {
@@ -219,7 +250,7 @@ void add_bit_descturction_animation(struct bit_descturction_animation ani) {
         bit_destruction_animation_array_pointer = 0;
 }
 
-void handle_new_laser(int32_t row, uint32_t column) {
+void handle_new_laser(int32_t row, int32_t column) {
     struct laser_shot shot;
     shot.row = row;
     shot.column = column;
@@ -250,23 +281,15 @@ void send_error_block(int32_t column) {
 }
 
 void spawn_block() {
-//    double rand = dis(gen);
-    int32_t new_block_type = 0;
-    if (rng_u32() % (int) (1 / BLASTER_CHANCE) == 0) { new_block_type = BLASTER; }
-    else {
-//        rand = dis(gen);
-        new_block_type = UNFLIPPED;
-    }
-
     for (int32_t i = 1; i < ROWS; ++i) {
         if (bit_blocks[i][interest_column] != AIR) {
-            bit_blocks[i - 1][interest_column] = new_block_type;
-            if (new_block_type == BLASTER) { handle_new_laser(i - 1, interest_column); }
+            bit_blocks[i - 1][interest_column] = next_block;
+            if (next_block == BLASTER) { handle_new_laser(i - 1, interest_column); }
             return;
         }
     }
-    bit_blocks[6][interest_column] = new_block_type;
-    if (new_block_type == BLASTER) { handle_new_laser(6, interest_column); }
+    bit_blocks[6][interest_column] = next_block;
+    if (next_block == BLASTER) { handle_new_laser(6, interest_column); }
 }
 
 void update_laser_shots() {
@@ -383,6 +406,7 @@ void handle_stomp_obstacle() {
             if (isPointInsideRectangle(p.x, p.y, x, y, h, w)) {
                 if (bit_blocks[i][j] == UNFLIPPED) {
                     bit_blocks[i][j] = FLIPPED;
+                    add_score(10);
                     p1.vely = -JUMP_HEIGHT;
                     p1.in_air = true;
                     p1.stomping = false;
@@ -394,6 +418,8 @@ void handle_stomp_obstacle() {
                     ani.column = j;
                     ani.row = i;
                     add_bit_descturction_animation(ani);
+                    add_score(stomped_obstacle_score[p1.stomped_obstacles]);
+                    p1.stomped_obstacles++;
 
                 } else if (bit_blocks[i][j] == ERR_BLOCK) {
                     p1.vely = -JUMP_HEIGHT;
@@ -429,6 +455,7 @@ void flip_blocks() {
                 p.x += 7000;
             if (isPointInsideRectangle(p.x, p.y, x, y, h, w)) {
                 bit_blocks[i][j] = FLIPPED;
+                add_score(10);
             }
         }
     }
@@ -610,6 +637,7 @@ void handle_player() {
         handle_stomp_obstacle();
 
     } else {
+        p1.stomped_obstacles = 0;
         flip_blocks();
 
         handle_box_collision();
@@ -622,10 +650,39 @@ void handle_player() {
     p1.y += p1.vely;
 }
 
+void intPadder(int32_t number, int32_t padding, char* result) {
+    sprintf(result, "%d", number);
+
+    // Calculate the length of the resulting string
+    size_t length = strlen(result);
+
+    // Check if padding is necessary
+    if (length < padding) {
+        // Create a temporary string with the padded zeros
+        char temp[padding + 1];
+        memset(temp, '0', padding - length);
+        temp[padding - length] = '\0';
+
+        // Concatenate the padded zeros with the original string
+        strcat(temp, result);
+        strcpy(result, temp);
+    }
+}
+
 
 void render() {
     surf_fill(box, BLACK);
     // render Background
+    char paddedScore[12];
+    char paddedHighScore[12];
+    intPadder(visualized_score, 7, paddedScore);
+    intPadder(highscore, 7, paddedHighScore);
+
+    gpu_print_text(FRONT_BUFFER, 38-3, 1, WHITE, BLACK, paddedScore);
+    gpu_print_text(FRONT_BUFFER, (160/2)-2, 1, WHITE, BLACK, "/");
+    gpu_print_text(FRONT_BUFFER, (160/2)+4, 1, WHITE, BLACK, paddedHighScore);
+
+
     surf_draw_masked_surf(box, &background_texture, 0, 0, BLACK);
 
     for (int32_t bit = 0; bit < ROWS * COLUMNS; bit++) {
@@ -645,17 +702,25 @@ void render() {
 
     if (warning) {
         SDL_Rect destination_rect;
-        uint32_t x = 1 + (interest_column * 13);
+        int32_t x = 1 + (interest_column * 13);
         int32_t y = 1;
 //        int32_t w = 12;
 //        int32_t h = 12 * (column_air_amount(interest_column));
         surf_draw_masked_surf(box, &warning_texture, x, y, BLACK);
+        switch (next_block) {
+                case UNFLIPPED:
+                    surf_draw_filled_rectangle(box, interest_column*13+1, 1, 12, 12, RED);
+                    break;
+                case BLASTER:
+                surf_draw_masked_surf(box, &blaster0_texture, interest_column*13+1, 1, BLACK);
+                    break;
+        }
     } else if (flash) {
         SDL_Rect destination_rect;
-        uint32_t x = 1 + (interest_column * 13);
+        int32_t x = 1 + (interest_column * 13);
         int32_t y = 1 - (12 * (COLUMNS - column_air_amount(interest_column)));
-        int32_t w = 12;
-        int32_t h = 12 * (COLUMNS);
+//        int32_t w = 12;
+//        int32_t h = 12 * (COLUMNS);
 
 //        SDL_Rect source_rect;
 //        source_rect.x = 0;
@@ -680,7 +745,7 @@ void render() {
         if (!laser_shots[i].destroyed) {
             int32_t x = 1 + (laser_shots[i].column * 13);
             int32_t y = 1 + (laser_shots[i].row * 12);
-            printf("%d\n", laser_shots[i].texture);
+//            printf("%d\n", laser_shots[i].texture);
             if (laser_shots[i].texture == 0) {
                 surf_draw_masked_surf(box, &blaster0_texture, x, y, BLACK);
             } else if (laser_shots[i].texture == 1) {
@@ -718,6 +783,7 @@ void render() {
             }
         }
     }
+
 
     surf_draw_rectangle(box, (p1.x - 1) / 1000 - 41, (p1.y - 1) / 1000 - 34, 7, 9, WHITE);
 //    printf("%d, %d\n", p1.x, p1.y);
@@ -764,8 +830,8 @@ uint8_t start(void) {
     p1.velx = 0;
     p1.vely = -100;
 
-    uint32_t stop;
-    uint32_t start;
+    int32_t stop;
+    int32_t start;
 
 
     for (int i = 0; i < ROWS * COLUMNS * 8; i++) {
@@ -796,6 +862,7 @@ uint8_t start(void) {
             }
         }
         handle_player();
+        update_score();
         render();
 
         // timing
