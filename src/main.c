@@ -17,6 +17,9 @@
 #include "blaster2.m3if.asset"
 #include "blaster3.m3if.asset"
 #include "blaster4.m3if.asset"
+#include "unflipped.m3if.asset"
+#include "flipped.m3if.asset"
+#include "error.m3if.asset"
 //#include "/home/vandi/code/menga/Memory_Manager/.vmes/src/vmes.c"
 
 #define FPS 60
@@ -44,17 +47,18 @@
 #define DESTROIED_BIT_ANIMATION_DURATION 500
 #define LASER_SHOT_DURATION 750
 #define LASER_SHOT_DELAY 6000
+#define DEATH_BLINK_SPEED 750
 
 #define CONTROLLER 3
 
-#define BLACK 0b000
-#define WHITE 0b001
-#define YELLOW 0b010
-#define RED 0b011
-#define DARK_RED 0b100
-#define GREEN 0b101
-#define BLUE 0b110
-#define GRAY 0b111
+#define BLACK 0
+#define WHITE 1
+#define YELLOW 2
+#define RED 3
+#define DARK_RED 4
+#define GREEN 5
+#define BLUE 6
+#define GRAY 7
 
 #define MAX(a, b) (a > b ? a : b)
 
@@ -71,11 +75,6 @@ uint16_t palette[8] = {COLOR_TO_GPIO(0b000, 0b000, 0b000), \
 struct point {
     int32_t x;
     int32_t y;
-};
-
-struct fpoint {
-    double x;
-    double y;
 };
 
 struct line {
@@ -103,6 +102,9 @@ struct player {
     bool in_air;
     bool gliding;
     bool stomping;
+    bool joined;
+    bool dead;
+    int32_t death_time;
 };
 
 struct bit_descturction_animation {
@@ -124,6 +126,7 @@ struct laser_shot {
 
 bool warning = false;
 bool flash = false;
+bool flash_spawned = false;
 int32_t last_warning_start = 0;
 int32_t last_flash_start = 0;
 int32_t interest_column = 0;
@@ -136,6 +139,10 @@ int32_t score = 0;
 int32_t highscore = 0;
 int32_t visualized_score = 0;
 int32_t score_adder = 0;
+struct player player0;
+struct player player1;
+struct player player2;
+struct player player3;
 
 struct bit_descturction_animation bit_descturction_animations[ROWS * COLUMNS + 1];
 int32_t bit_destruction_animation_array_pointer = 0;
@@ -162,44 +169,51 @@ Surface blaster1_texture;
 Surface blaster2_texture;
 Surface blaster3_texture;
 Surface blaster4_texture;
-struct player p1;
+Surface unflipped_texture;
+Surface flipped_texture;
+Surface error_texture;
 Surface *box;
 
-void handle_input() {
+void handle_input(struct player *p1, int32_t player_id) {
 
-    if (input_get_button(CONTROLLER, BUTTON_DOWN) && p1.in_air && !p1.last_down_keystate) {
-        p1.stomping = true;
+    if (input_get_button(player_id, BUTTON_DOWN) && p1->in_air && !p1->last_down_keystate) {
+        p1->stomping = true;
     }
-    if (input_get_button(CONTROLLER, BUTTON_LEFT) && !p1.stomping) {
-        p1.velx += (int32_t) (-HORIZONTAL_SPEED * MAX(FRAMETIME, delta));
+    if (input_get_button(player_id, BUTTON_LEFT) && !p1->stomping) {
+        p1->velx += (int32_t) (-HORIZONTAL_SPEED * MAX(FRAMETIME, delta));
     }
-    if (input_get_button(CONTROLLER, BUTTON_RIGHT) && !p1.stomping) {
-        p1.velx += (int32_t) (HORIZONTAL_SPEED * MAX(FRAMETIME, delta));;
+    if (input_get_button(player_id, BUTTON_RIGHT) && !p1->stomping) {
+        p1->velx += (int32_t) (HORIZONTAL_SPEED * MAX(FRAMETIME, delta));;
     }
 
 //        if ((! p1.in_air or  p1.gliding) &&event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_UP) {
 //             p1.vely = -1.3;
 //        }
-    if (input_get_button(CONTROLLER, BUTTON_UP) && (!p1.in_air || p1.gliding) && !p1.last_up_keystate) {
-        p1.vely = -JUMP_HEIGHT;
+    if (input_get_button(player_id, BUTTON_UP) && (!p1->in_air || p1->gliding) && !p1->last_up_keystate) {
+        p1->vely = -JUMP_HEIGHT;
 //        p1.y -= 0.05;
     }
-    p1.last_up_keystate = input_get_button(CONTROLLER, BUTTON_UP);
-    p1.last_down_keystate = input_get_button(CONTROLLER, BUTTON_DOWN);
+    p1->last_up_keystate = input_get_button(player_id, BUTTON_UP);
+    p1->last_down_keystate = input_get_button(player_id, BUTTON_DOWN);
+}
+
+void update_player_status(struct player *p1, int32_t player_id) {
+
+    p1->joined = input_is_available(player_id);
 }
 
 void add_score(int32_t adder) {
     score += adder;
-    for (int i = 0; i < 6; i++){
-        if (adder < stomped_obstacle_score[i]){
+    for (int i = 0; i < 6; i++) {
+        if (adder < stomped_obstacle_score[i]) {
             score_adder = stomped_obstacle_adding_score[i];
             break;
         }
     }
 }
 
-void update_score(){
-    if (visualized_score + score_adder >= score){
+void update_score() {
+    if (visualized_score + score_adder >= score) {
         visualized_score = score;
     } else {
         visualized_score += score_adder;
@@ -228,6 +242,7 @@ void spawn_warning() {
 }
 
 void spawn_flash() {
+    flash_spawned = true;
     last_flash_start = timer_get_ms();
     warning = false;
     flash = true;
@@ -340,48 +355,46 @@ void update_laser_shots() {
     }
 }
 
-void handle_box_collision() {
-    p1.gliding = false;
-    if (p1.velx > 0) {
-        if (p1.x + p1.velx + 7 * 1000 > 119 * 1000) {
-            p1.velx = 0;
-            p1.x = 119 * 1000 - 7 * 1000;
-            p1.gliding = true;
+void handle_box_collision(struct player *p1) {
+    p1->gliding = false;
+    if (p1->velx > 0) {
+        if (p1->x + p1->velx + 7 * 1000 > 119 * 1000) {
+            p1->velx = 0;
+            p1->x = 119 * 1000 - 7 * 1000;
+            p1->gliding = true;
         }
-    } else if (p1.velx < 0) {
-        if (p1.x + p1.velx < 43 * 1000) {
-            p1.velx = 0;
-            p1.x = 42 * 1000 + 2;
-            p1.gliding = true;
+    } else if (p1->velx < 0) {
+        if (p1->x + p1->velx < 43 * 1000) {
+            p1->velx = 0;
+            p1->x = 42 * 1000 + 2;
+            p1->gliding = true;
         }
     }
-    if (p1.vely >= 0 && p1.y >= 110000) {
-        p1.vely = 0;
-        p1.y = 119 * 1000 - 9 * 1000;
-        p1.in_air = false;
+    if (p1->vely >= 0 && p1->y >= 110000) {
+        p1->vely = 0;
+        p1->y = 119 * 1000 - 9 * 1000;
+        p1->in_air = false;
     } else {
-        p1.in_air = true;
+        p1->in_air = true;
     }
-    if (p1.vely <= 0 && p1.y <= 32 * 1000) {
-        p1.vely = 0;
+    if (p1->vely <= 0 && p1->y <= 32 * 1000) {
+        p1->vely = 0;
     }
 }
 
-void correct_player_stomp_trajectory() {
-//    if (p1.x / 1000 * 2 % 2) // TODO figure this outt
-    int32_t x = ((int) round(((float) p1.x / 1000) + 4.5) - 42) % 13;
-//    std::cout << x << std::endl;
+void correct_player_stomp_trajectory(struct player *p1) {
+    int32_t x = ((int) round(((float) p1->x / 1000) + 4.5) - 42) % 13;
     if (x > 13 - 2.5) {
-        p1.velx = (int32_t) (-STOMP_SPEED / 2 * MAX(FRAMETIME, delta));
-        p1.vely = (int32_t) (STOMP_SPEED / 20 * MAX(FRAMETIME, delta));
+        p1->velx = (int32_t) (-STOMP_SPEED / 2 * MAX(FRAMETIME, delta));
+        p1->vely = (int32_t) (STOMP_SPEED / 20 * MAX(FRAMETIME, delta));
     } else if (x < 3.5) {
-        p1.velx = (int32_t) (STOMP_SPEED / 2 * MAX(FRAMETIME, delta));
-        p1.vely = (int32_t) (STOMP_SPEED / 20 * MAX(FRAMETIME, delta));
+        p1->velx = (int32_t) (STOMP_SPEED / 2 * MAX(FRAMETIME, delta));
+        p1->vely = (int32_t) (STOMP_SPEED / 20 * MAX(FRAMETIME, delta));
     }
 }
 
 
-bool isPointInsideRectangle(int32_t px, int32_t py, int32_t x, int32_t y, int32_t h, int32_t w) {
+bool is_point_inside_rectangle(int32_t px, int32_t py, int32_t x, int32_t y, int32_t h, int32_t w) {
     if (px >= x && px <= x + w &&
         py >= y && py <= y + h) {
         return true;
@@ -389,8 +402,8 @@ bool isPointInsideRectangle(int32_t px, int32_t py, int32_t x, int32_t y, int32_
     return false;
 }
 
-void handle_stomp_obstacle() {
-    if (p1.vely == 0) {
+void handle_stomp_obstacle(struct player *p1) {
+    if (p1->vely == 0) {
         return;
     }
     for (int32_t i = 0; i < ROWS; ++i) {
@@ -401,15 +414,15 @@ void handle_stomp_obstacle() {
             int32_t h = 12000;
 
             struct point p;
-            p.y = p1.y + 9000 + p1.vely;
-            p.x = p1.x + 3500;
-            if (isPointInsideRectangle(p.x, p.y, x, y, h, w)) {
+            p.y = p1->y + 9000 + p1->vely;
+            p.x = p1->x + 3500;
+            if (is_point_inside_rectangle(p.x, p.y, x, y, h, w)) {
                 if (bit_blocks[i][j] == UNFLIPPED) {
                     bit_blocks[i][j] = FLIPPED;
                     add_score(10);
-                    p1.vely = -JUMP_HEIGHT;
-                    p1.in_air = true;
-                    p1.stomping = false;
+                    p1->vely = -JUMP_HEIGHT;
+                    p1->in_air = true;
+                    p1->stomping = false;
                     return;
                 } else if (bit_blocks[i][j] == FLIPPED || bit_blocks[i][j] == BLASTER) {
                     bit_blocks[i][j] = AIR;
@@ -418,13 +431,13 @@ void handle_stomp_obstacle() {
                     ani.column = j;
                     ani.row = i;
                     add_bit_descturction_animation(ani);
-                    add_score(stomped_obstacle_score[p1.stomped_obstacles]);
-                    p1.stomped_obstacles++;
+                    add_score(stomped_obstacle_score[p1->stomped_obstacles]);
+                    p1->stomped_obstacles++;
 
                 } else if (bit_blocks[i][j] == ERR_BLOCK) {
-                    p1.vely = -JUMP_HEIGHT;
-                    p1.in_air = true;
-                    p1.stomping = false;
+                    p1->vely = -JUMP_HEIGHT;
+                    p1->in_air = true;
+                    p1->stomping = false;
                     return;
                 }
             }
@@ -433,8 +446,8 @@ void handle_stomp_obstacle() {
 
 }
 
-void flip_blocks() {
-    if (p1.velx == 0) {
+void flip_blocks(struct player *p1) {
+    if (p1->velx == 0) {
         return;
     }
     for (int32_t i = 0; i < ROWS; ++i) {
@@ -449,11 +462,11 @@ void flip_blocks() {
             int32_t h = 12000;
 
             struct point p;
-            p.y = p1.y + 4500;
-            p.x = p1.x + p1.velx;
-            if (p1.velx > 0)
+            p.y = p1->y + 4500;
+            p.x = p1->x + p1->velx;
+            if (p1->velx > 0)
                 p.x += 7000;
-            if (isPointInsideRectangle(p.x, p.y, x, y, h, w)) {
+            if (is_point_inside_rectangle(p.x, p.y, x, y, h, w)) {
                 bit_blocks[i][j] = FLIPPED;
                 add_score(10);
             }
@@ -493,7 +506,7 @@ bool linesIntersect(struct line a, struct line b) {
 }
 
 
-void handle_block_collision() {
+void generate_mesh() {
 
 //    struct line vertical_mesh[6];
     vertical_mesh_count = 0;
@@ -561,14 +574,16 @@ void handle_block_collision() {
 //            horizontal_mesh[horizontal_mesh_count].x -= 2000;
 //        }
     }
+}
 
+void handle_block_collision(struct player *p1) {
     struct point center;
-    center.x = p1.x + 3500;
-    center.y = p1.y + 4500;
+    center.x = p1->x + 3500;
+    center.y = p1->y + 4500;
 
     struct point center_vel;
-    center_vel.x = center.x + p1.velx;
-    center_vel.y = center.y + p1.vely;
+    center_vel.x = center.x + p1->velx;
+    center_vel.y = center.y + p1->vely;
 
     struct line center_line;
     center_line.x = center.x;
@@ -577,22 +592,22 @@ void handle_block_collision() {
     center_line.b = center_vel.y;
     //redner mesh
 
-    if (p1.vely >= -40) {
+    if (p1->vely >= -40) {
 
         for (int32_t i = 0; i < horizontal_mesh_count; i++) {
 //            printf("1, %d\n", i);
             bool g = linesIntersect(horizontal_mesh[i], center_line);
 //            printf("2, %d\n", i);
             if (g) {
-                p1.vely = 0;
-                p1.y = horizontal_mesh[i].b - 4500;
-                p1.in_air = false;
+                p1->vely = 0;
+                p1->y = horizontal_mesh[i].b - 4500;
+                p1->in_air = false;
             }
         }
     }
-    if (p1.vely == 0) {
+    if (p1->vely == 0) {
         struct point gravity_center_vel;
-        gravity_center_vel.x = center.x + p1.velx;
+        gravity_center_vel.x = center.x + p1->velx;
         gravity_center_vel.y = center.y + (int32_t) (GRAVITY * MAX(FRAMETIME, delta));
         struct line gravity_center_line;
         gravity_center_line.x = center.x;
@@ -601,56 +616,95 @@ void handle_block_collision() {
         gravity_center_line.b = gravity_center_vel.y;
         for (int32_t i = 0; i < horizontal_mesh_count; i++) {
             if (linesIntersect(horizontal_mesh[i], gravity_center_line)) {
-                p1.in_air = false;
+                p1->in_air = false;
             }
         }
     }
 
     for (int32_t i = 0; i < vertical_mesh_count; i++) {
         if (linesIntersect(vertical_mesh[i], center_line)) {
-            p1.velx = 0;
-            p1.gliding = true;
+            p1->velx = 0;
+            p1->gliding = true;
         }
     }
 }
 
-void handle_player() {
-
-    p1.velx = 0;
-    if (p1.in_air) {
-        p1.vely += (int32_t) (GRAVITY * MAX(FRAMETIME, delta));;
-    } else {
-        p1.vely = 0;
+bool rectanglesOverlap(int32_t x1, int32_t y1, int32_t w1, int32_t h1, int32_t x2, int32_t y2, int32_t w2, int32_t h2) {
+    if (x1 > x2 + w2 || x1 + w1 < x2 ||
+        y1 > y2 + h2 || y1 + h1 < y2) {
+        return false;
     }
-    handle_input();
-    if (p1.stomping) {
-        p1.vely = (int32_t) (STOMP_SPEED * MAX(FRAMETIME, delta));
-        handle_box_collision();
-        if (p1.vely == 0) {
+    return true;
+}
 
-            p1.vely = -JUMP_HEIGHT;
-            p1.in_air = true;
-            p1.stomping = false;
+bool player_died(struct player *p1) {
+
+    if (flash_spawned) {
+        if (rectanglesOverlap((p1->x + 1) / 1000 - 41, (p1->y + 1) / 1000 - 34, 5, 7, (interest_column) * 13, 0, 12,
+                              120)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < ROWS * COLUMNS * 8; i++) {
+        if (laser_shots[i].active && !laser_shots[i].destroyed) {
+            int32_t x = ((laser_shots[i].column - laser_shots[i].left_expansion) * 13) - 1;
+            int32_t y = (laser_shots[i].row * 12) + 5;
+            int32_t w = ((laser_shots[i].left_expansion + laser_shots[i].right_expansion + 1) * 13) + 1;
+            int32_t h = 4;
+            if (rectanglesOverlap((p1->x + 1) / 1000 - 41, (p1->y + 1) / 1000 - 34, 7, 9, x, y, w, h)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+void handle_player(struct player *p1, int32_t player_id) {
+    update_player_status(p1, player_id);
+    if (!p1->joined || p1->dead) {
+        return;
+    }
+
+    p1->velx = 0;
+    if (p1->in_air) {
+        p1->vely += (int32_t) (GRAVITY * MAX(FRAMETIME, delta));;
+    } else {
+        p1->vely = 0;
+    }
+    handle_input(p1, player_id);
+    if (p1->stomping) {
+        p1->vely = (int32_t) (STOMP_SPEED * MAX(FRAMETIME, delta));
+        handle_box_collision(p1);
+        if (p1->vely == 0) {
+
+            p1->vely = -JUMP_HEIGHT;
+            p1->in_air = true;
+            p1->stomping = false;
             return;
         }
-        correct_player_stomp_trajectory();
-        handle_stomp_obstacle();
+        correct_player_stomp_trajectory(p1);
+        handle_stomp_obstacle(p1);
 
     } else {
-        p1.stomped_obstacles = 0;
-        flip_blocks();
+        p1->stomped_obstacles = 0;
+        flip_blocks(p1);
 
-        handle_box_collision();
-        handle_block_collision();
-        if (p1.gliding && p1.vely > (int32_t) (GLIDE_SPEED * MAX(FRAMETIME, delta))) {
-            p1.vely = (int32_t) (GLIDE_SPEED * MAX(FRAMETIME, delta));
+        handle_box_collision(p1);
+        handle_block_collision(p1);
+        if (p1->gliding && p1->vely > (int32_t) (GLIDE_SPEED * MAX(FRAMETIME, delta))) {
+            p1->vely = (int32_t) (GLIDE_SPEED * MAX(FRAMETIME, delta));
         }
     }
-    p1.x += p1.velx;
-    p1.y += p1.vely;
+    p1->dead = player_died(p1);
+    if (p1->dead){
+        p1->death_time = timer_get_ms();
+    }
+    p1->x += p1->velx;
+    p1->y += p1->vely;
 }
 
-void intPadder(int32_t number, int32_t padding, char* result) {
+void intPadder(int32_t number, int32_t padding, char *result) {
     sprintf(result, "%d", number);
 
     // Calculate the length of the resulting string
@@ -669,7 +723,6 @@ void intPadder(int32_t number, int32_t padding, char* result) {
     }
 }
 
-
 void render() {
     surf_fill(box, BLACK);
     // render Background
@@ -678,9 +731,9 @@ void render() {
     intPadder(visualized_score, 7, paddedScore);
     intPadder(highscore, 7, paddedHighScore);
 
-    gpu_print_text(FRONT_BUFFER, 38-3, 1, WHITE, BLACK, paddedScore);
-    gpu_print_text(FRONT_BUFFER, (160/2)-2, 1, WHITE, BLACK, "/");
-    gpu_print_text(FRONT_BUFFER, (160/2)+4, 1, WHITE, BLACK, paddedHighScore);
+    gpu_print_text(FRONT_BUFFER, 38 - 3, 3, WHITE, BLACK, paddedScore);
+    gpu_print_text(FRONT_BUFFER, (160 / 2) - 2, 3, WHITE, BLACK, "/");
+    gpu_print_text(FRONT_BUFFER, (160 / 2) + 4, 3, WHITE, BLACK, paddedHighScore);
 
 
     surf_draw_masked_surf(box, &background_texture, 0, 0, BLACK);
@@ -708,12 +761,12 @@ void render() {
 //        int32_t h = 12 * (column_air_amount(interest_column));
         surf_draw_masked_surf(box, &warning_texture, x, y, BLACK);
         switch (next_block) {
-                case UNFLIPPED:
-                    surf_draw_filled_rectangle(box, interest_column*13+1, 1, 12, 12, RED);
-                    break;
-                case BLASTER:
-                surf_draw_masked_surf(box, &blaster0_texture, interest_column*13+1, 1, BLACK);
-                    break;
+            case UNFLIPPED:
+                surf_draw_surf(box, &unflipped_texture, x, y);
+                break;
+            case BLASTER:
+                surf_draw_masked_surf(box, &blaster0_texture, interest_column * 13 + 1, 1, BLACK);
+                break;
         }
     } else if (flash) {
         SDL_Rect destination_rect;
@@ -747,15 +800,15 @@ void render() {
             int32_t y = 1 + (laser_shots[i].row * 12);
 //            printf("%d\n", laser_shots[i].texture);
             if (laser_shots[i].texture == 0) {
-                surf_draw_masked_surf(box, &blaster0_texture, x, y, BLACK);
+                surf_draw_surf(box, &blaster0_texture, x, y);
             } else if (laser_shots[i].texture == 1) {
-                surf_draw_masked_surf(box, &blaster1_texture, x, y, BLACK);
+                surf_draw_surf(box, &blaster1_texture, x, y);
             } else if (laser_shots[i].texture == 2) {
-                surf_draw_masked_surf(box, &blaster2_texture, x, y, BLACK);
+                surf_draw_surf(box, &blaster2_texture, x, y);
             } else if (laser_shots[i].texture == 3) {
-                surf_draw_masked_surf(box, &blaster3_texture, x, y, BLACK);
+                surf_draw_surf(box, &blaster3_texture, x, y);
             } else if (laser_shots[i].texture == 4) {
-                surf_draw_masked_surf(box, &blaster4_texture, x, y, BLACK);
+                surf_draw_surf(box, &blaster4_texture, x, y);
             }
         }
     }
@@ -772,21 +825,83 @@ void render() {
 //            std::cout << zero_texture.get_surface_rect(count, 0)->x << ", " << zero_texture.get_surface_rect(count, 0)->y << "\n";
             switch (bit_blocks[i][j]) {
                 case UNFLIPPED:
-                    surf_draw_filled_rectangle(box, x, y, w, h, RED);
+                    surf_draw_surf(box, &unflipped_texture, x, y);
                     break;
                 case FLIPPED:
-                    surf_draw_filled_rectangle(box, x, y, w, h, YELLOW);
+                    surf_draw_surf(box, &flipped_texture, x, y);
                     break;
                 case ERR_BLOCK:
-                    surf_draw_filled_rectangle(box, x, y, w, h, GREEN);
+                    surf_draw_surf(box, &error_texture, x, y);
                     break;
             }
         }
     }
+    char box_char[2] = {'!' - 64, 0};
+    if (player0.dead) {
+        gpu_print_text(FRONT_BUFFER, 58, 13, DARK_RED, BLACK, box_char);
+        if (player0.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+            surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else if (player0.joined){
+        gpu_print_text(FRONT_BUFFER, 58, 13, WHITE, BLACK, box_char);
+        surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else{
+        gpu_print_text(FRONT_BUFFER, 58, 13, GRAY, BLACK, box_char);
+    }
+    
+    if (player1.dead) {
+        gpu_print_text(FRONT_BUFFER, 71, 13, DARK_RED, BLACK, box_char);
+        if (player1.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+            surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else if (player1.joined){
+        gpu_print_text(FRONT_BUFFER, 71, 13, WHITE, BLACK, box_char);
+        surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else{
+        gpu_print_text(FRONT_BUFFER, 71, 13, GRAY, BLACK, box_char);
+    }
+
+    if (player2.dead) {
+        gpu_print_text(FRONT_BUFFER, 84, 13, DARK_RED, BLACK, box_char);
+        if (player2.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+            surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else if (player2.joined){
+        gpu_print_text(FRONT_BUFFER, 84, 13, WHITE, BLACK, box_char);
+        surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else{
+        gpu_print_text(FRONT_BUFFER, 84, 13, GRAY, BLACK, box_char);
+    }
+
+    if (player3.dead) {
+        gpu_print_text(FRONT_BUFFER, 97, 13, DARK_RED, BLACK, box_char);
+        if (player3.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+            surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else if (player3.joined){
+        gpu_print_text(FRONT_BUFFER, 97, 13, WHITE, BLACK, box_char);
+        surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
+    } else{
+        gpu_print_text(FRONT_BUFFER, 97, 13, GRAY, BLACK, box_char);
+    }
 
 
-    surf_draw_rectangle(box, (p1.x - 1) / 1000 - 41, (p1.y - 1) / 1000 - 34, 7, 9, WHITE);
-//    printf("%d, %d\n", p1.x, p1.y);
+//    if (player0.joined && !player0.dead)
+//        surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
+//    if (player1.joined && !player1.dead)
+//        surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
+//    if (player2.joined && !player2.dead)
+//        surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+//    if (player3.joined && !player3.dead)
+//        surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
+//
+//    if (player0.joined && player0.dead && player0.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+//        surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
+//
+//    if (player1.joined && player1.dead && player1.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+//        surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
+//
+//    if (player2.joined && player2.dead && player2.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+//        surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+//
+//    if (player3.joined && player3.dead && player3.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+//        surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
 
 
 //    for (int32_t i = 0; i < horizontal_mesh_count; i++) {
@@ -799,6 +914,7 @@ void render() {
 //                       vertical_mesh[i].a / 1000 - 41, vertical_mesh[i].b / 1000 - 34, BLUE);
 //    }
 
+    gpu_block_frame();
     gpu_send_buf(BACK_BUFFER, box->w, box->h, 41, 34, box->d);
     gpu_swap_buf();
 
@@ -823,13 +939,35 @@ uint8_t start(void) {
     blaster2_texture = surf_create_from_memory(12, 12, ASSET_BLASTER2_M3IF);
     blaster3_texture = surf_create_from_memory(12, 12, ASSET_BLASTER3_M3IF);
     blaster4_texture = surf_create_from_memory(12, 12, ASSET_BLASTER4_M3IF);
+    unflipped_texture = surf_create_from_memory(12, 12, ASSET_UNFLIPPED_M3IF);
+    flipped_texture = surf_create_from_memory(12, 12, ASSET_FLIPPED_M3IF);
+    error_texture = surf_create_from_memory(12, 12, ASSET_ERROR_M3IF);
     rng_init();
     gpu_update_palette(palette);
-    p1.x = 96000;
-    p1.y = 79000;
-    p1.velx = 0;
-    p1.vely = -100;
-
+    player0.x = 96000;
+    player0.y = 79000;
+    player0.velx = 0;
+    player0.vely = -100;
+    player0.dead = false;
+    player0.joined = false;
+    player1.x = 96000;
+    player1.y = 79000;
+    player1.velx = 0;
+    player1.vely = -100;
+    player1.dead = false;
+    player1.joined = false;
+    player2.x = 96000;
+    player2.y = 79000;
+    player2.velx = 0;
+    player2.vely = -100;
+    player2.dead = false;
+    player2.joined = false;
+    player3.x = 96000;
+    player3.y = 79000;
+    player3.velx = 0;
+    player3.vely = -100;
+    player3.dead = false;
+    player3.joined = false;
     int32_t stop;
     int32_t start;
 
@@ -861,7 +999,12 @@ uint8_t start(void) {
                 send_error_block(i);
             }
         }
-        handle_player();
+        generate_mesh();
+        handle_player(&player0, 0);
+        handle_player(&player1, 1);
+        handle_player(&player2, 2);
+        handle_player(&player3, 3);
+        flash_spawned = false;
         update_score();
         render();
 
