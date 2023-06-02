@@ -148,18 +148,38 @@ static void surf_fill(Surface* surf, uint8_t color) {
 
 static void surf_draw_surf(Surface* destination_surf, Surface* source_surf, uint8_t x, uint8_t y) {
     for (int i = 0; i < source_surf->height; i++) {
-        for (int j = 0; j < source_surf->width; j++) {\
+        for (int j = 0; j < source_surf->width; j++) {
             surf_set_pixel(destination_surf, j+x, i+y, surf_get_pixel(source_surf, j, i));
+        }
+    }
+}
+
+static void surf_draw_subsurf(Surface* destination_surf, Surface* source_surf, uint8_t dx, uint8_t dy, uint8_t sx, uint8_t sy, uint8_t w, uint8_t h) {
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            uint8_t color = surf_get_pixel(source_surf, j + sx, i + sy);
+            surf_set_pixel(destination_surf, j + dx, i + dy, color);
         }
     }
 }
 
 static void surf_draw_masked_surf(Surface* destination_surf, Surface* source_surf, uint8_t x, uint8_t y, uint8_t mask_color) {
     for (int i = 0; i < source_surf->height; i++) {
-        for (int j = 0; j < source_surf->width; j++) {\
+        for (int j = 0; j < source_surf->width; j++) {
             uint8_t color = surf_get_pixel(source_surf, j, i);
             if (color != mask_color) {
                 surf_set_pixel(destination_surf, j + x, i + y, color);
+            }
+        }
+    }
+}
+
+static void surf_draw_masked_subsurf(Surface* destination_surf, Surface* source_surf, uint8_t dx, uint8_t dy, uint8_t sx, uint8_t sy, uint8_t w, uint8_t h, uint8_t mask_color) {
+    for (int i = 0; i < h; i++) {
+        for (int j = 0; j < w; j++) {
+            uint8_t color = surf_get_pixel(source_surf, j + sx, i + sy);
+            if (color != mask_color) {
+                surf_set_pixel(destination_surf, j + dx, i + dy, color);
             }
         }
     }
