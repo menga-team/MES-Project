@@ -40,7 +40,8 @@
 #define JUMP_HEIGHT 2000
 #define STOMP_SPEED 300
 #define HORIZONTAL_SPEED 90
-#define NEW_BIT_DELAY 2000
+#define MIN_NEW_BIT_DELAY 0
+#define MAX_NEW_BIT_DELAY 4000
 #define WARNING_DURATION 1000
 #define BLASTER_CHANCE 0.1
 #define FLASH_DURATION 50
@@ -127,6 +128,7 @@ struct laser_shot {
 bool warning = false;
 bool flash = false;
 bool flash_spawned = false;
+int32_t falling_blocks = 0;
 int32_t last_warning_start = 0;
 int32_t last_flash_start = 0;
 int32_t interest_column = 0;
@@ -134,7 +136,6 @@ int32_t cycles = 0;
 int32_t next_block = UNFLIPPED;
 
 int32_t stomped_obstacle_score[6] = {100, 250, 500, 1000, 2500, 5000};
-int32_t stomped_obstacle_adding_score[6] = {1, 5, 11, 23, 43, 83};
 int32_t score = 0;
 int32_t highscore = 0;
 int32_t visualized_score = 0;
@@ -204,12 +205,7 @@ void update_player_status(struct player *p1, int32_t player_id) {
 
 void add_score(int32_t adder) {
     score += adder;
-    for (int i = 0; i < 6; i++) {
-        if (adder < stomped_obstacle_score[i]) {
-            score_adder = stomped_obstacle_adding_score[i];
-            break;
-        }
-    }
+    score_adder = (int32_t) (((score - visualized_score) * 0.01) + 1);
 }
 
 void update_score() {
@@ -255,7 +251,7 @@ void end_flash() {
 
 
 bool check_for_limitreach(int32_t column) {
-    return bit_blocks[0][column] != AIR;
+    return bit_blocks[1][column] != AIR;
 }
 
 void add_bit_descturction_animation(struct bit_descturction_animation ani) {
@@ -576,6 +572,11 @@ void generate_mesh() {
     }
 }
 
+
+int32_t get_new_bit_delay() {
+    return MAX(MAX_NEW_BIT_DELAY - (cycles * 20), MIN_NEW_BIT_DELAY);
+}
+
 void handle_block_collision(struct player *p1) {
     struct point center;
     center.x = p1->x + 3500;
@@ -593,7 +594,6 @@ void handle_block_collision(struct player *p1) {
     //redner mesh
 
     if (p1->vely >= -40) {
-
         for (int32_t i = 0; i < horizontal_mesh_count; i++) {
 //            printf("1, %d\n", i);
             bool g = linesIntersect(horizontal_mesh[i], center_line);
@@ -697,7 +697,7 @@ void handle_player(struct player *p1, int32_t player_id) {
         }
     }
     p1->dead = player_died(p1);
-    if (p1->dead){
+    if (p1->dead) {
         p1->death_time = timer_get_ms();
     }
     p1->x += p1->velx;
@@ -765,7 +765,7 @@ void render() {
                 surf_draw_surf(box, &unflipped_texture, x, y);
                 break;
             case BLASTER:
-                surf_draw_masked_surf(box, &blaster0_texture, interest_column * 13 + 1, 1, BLACK);
+                surf_draw_surf(box, &blaster0_texture, interest_column * 13 + 1, 1);
                 break;
         }
     } else if (flash) {
@@ -839,45 +839,49 @@ void render() {
     char box_char[2] = {'!' - 64, 0};
     if (player0.dead) {
         gpu_print_text(FRONT_BUFFER, 58, 13, DARK_RED, BLACK, box_char);
-        if (player0.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+        if (player0.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+            (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
             surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else if (player0.joined){
+    } else if (player0.joined) {
         gpu_print_text(FRONT_BUFFER, 58, 13, WHITE, BLACK, box_char);
         surf_draw_rectangle(box, (player0.x - 1) / 1000 - 41, (player0.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else{
+    } else {
         gpu_print_text(FRONT_BUFFER, 58, 13, GRAY, BLACK, box_char);
     }
-    
+
     if (player1.dead) {
         gpu_print_text(FRONT_BUFFER, 71, 13, DARK_RED, BLACK, box_char);
-        if (player1.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+        if (player1.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+            (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
             surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else if (player1.joined){
+    } else if (player1.joined) {
         gpu_print_text(FRONT_BUFFER, 71, 13, WHITE, BLACK, box_char);
         surf_draw_rectangle(box, (player1.x - 1) / 1000 - 41, (player1.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else{
+    } else {
         gpu_print_text(FRONT_BUFFER, 71, 13, GRAY, BLACK, box_char);
     }
 
     if (player2.dead) {
         gpu_print_text(FRONT_BUFFER, 84, 13, DARK_RED, BLACK, box_char);
-        if (player2.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+        if (player2.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+            (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
             surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else if (player2.joined){
+    } else if (player2.joined) {
         gpu_print_text(FRONT_BUFFER, 84, 13, WHITE, BLACK, box_char);
         surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else{
+    } else {
         gpu_print_text(FRONT_BUFFER, 84, 13, GRAY, BLACK, box_char);
     }
 
     if (player3.dead) {
         gpu_print_text(FRONT_BUFFER, 97, 13, DARK_RED, BLACK, box_char);
-        if (player3.death_time + DEATH_BLINK_SPEED*4 > timer_get_ms() && (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED*2 < DEATH_BLINK_SPEED)
+        if (player3.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+            (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
             surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else if (player3.joined){
+    } else if (player3.joined) {
         gpu_print_text(FRONT_BUFFER, 97, 13, WHITE, BLACK, box_char);
         surf_draw_rectangle(box, (player3.x - 1) / 1000 - 41, (player3.y - 1) / 1000 - 34, 7, 9, WHITE);
-    } else{
+    } else {
         gpu_print_text(FRONT_BUFFER, 97, 13, GRAY, BLACK, box_char);
     }
 
@@ -985,7 +989,7 @@ uint8_t start(void) {
     gpu_blank(BACK_BUFFER, 0);
 
     while (1) {
-        if (timer_get_ms() > NEW_BIT_DELAY * cycles && !warning && !flash) {
+        if ((timer_get_ms() > get_new_bit_delay() * cycles) && !warning && !flash) {
             spawn_warning();
         } else if (warning && timer_get_ms() - last_warning_start > WARNING_DURATION) {
             spawn_flash();
