@@ -500,9 +500,9 @@ bool linesIntersect(struct line a, struct line b) {
     int32_t x4 = b.a;
     int32_t y4 = b.b;
 
-    double den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
-    double ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
-    double ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
+    float den = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+    float ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / den;
+    float ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / den;
 
     if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
         return true;
@@ -737,24 +737,24 @@ void handle_player(struct player *p1, int32_t player_id) {
     p1->y += p1->vely;
 }
 
-void intPadder(int32_t number, int32_t padding, char *result) {
-//    sprintf(result, "%d", number);
-
-    // Calculate the length of the resulting string
-    size_t length = strlen(result);
-
-    // Check if padding is necessary
-    if (length < padding) {
-        // Create a temporary string with the padded zeros
-        char temp[padding + 1];
-        memset(temp, '0', padding - length);
-        temp[padding - length] = '\0';
-
-        // Concatenate the padded zeros with the original string
-        strcat(temp, result);
-        strcpy(result, temp);
-    }
-}
+//void intPadder(int32_t number, int32_t padding, char *result) {
+////    sprintf(result, "%d", number);
+//
+//    // Calculate the length of the resulting string
+//    size_t length = strlen(result);
+//
+//    // Check if padding is necessary
+//    if (length < padding) {
+//        // Create a temporary string with the padded zeros
+//        char temp[padding + 1];
+//        memset(temp, '0', padding - length);
+//        temp[padding - length] = '\0';
+//
+//        // Concatenate the padded zeros with the original string
+//        strcat(temp, result);
+//        strcpy(result, temp);
+//    }
+//}
 
 void render() {
     surf_fill(box, BLACK);
@@ -787,7 +787,7 @@ void render() {
 
 
     if (warning) {
-        SDL_Rect destination_rect;
+//        SDL_Rect destination_rect;
         int32_t x = 1 + (interest_column * 13);
         int32_t y = 1;
 //        int32_t w = 12;
@@ -802,7 +802,7 @@ void render() {
                 break;
         }
     } else if (flash) {
-        SDL_Rect destination_rect;
+//        SDL_Rect destination_rect;
         int32_t x = 1 + (interest_column * 13);
         int32_t y = 1 - (12 * (COLUMNS - column_air_amount(interest_column)));
 //        int32_t w = 12;
@@ -848,77 +848,77 @@ void render() {
 
 
 //     render blocks
-    for (int32_t i = 0; i < ROWS; ++i) {
-        for (int32_t j = 0; j < COLUMNS; ++j) {
-            int32_t x = 1 + (j * 13);
-            int32_t y = 1 + (i * 12);
-            int32_t w = 12;
-            int32_t h = 12;
-
-//            std::cout << zero_texture.get_surface_rect(count, 0)->x << ", " << zero_texture.get_surface_rect(count, 0)->y << "\n";
-            switch (bit_blocks[i][j]) {
-                case UNFLIPPED:
-                    surf_draw_surf(box, &unflipped_texture, x, y);
-                    break;
-                case FLIPPED:
-                    surf_draw_surf(box, &flipped_texture, x, y);
-                    break;
-                case ERR_BLOCK:
-                    surf_draw_surf(box, &error_texture, x, y);
-                    break;
-            }
-        }
-    }
-    char box_char[2] = {'!' - 64, 0};
-    if (player0.dead) {
-        gpu_print_text(FRONT_BUFFER, 58, 13, RED, DARK_RED, box_char);
-        if (player0.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
-            (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
-            draw_player(player0, 0);
-    } else if (player0.joined) {
-        gpu_print_text(FRONT_BUFFER, 58, 13, RED, WHITE, box_char);
-        draw_player(player0, 0);
-    } else {
-        gpu_print_text(FRONT_BUFFER, 58, 13, RED, GRAY, box_char);
-    }
-
-    if (player1.dead) {
-        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, RED, box_char);
-        if (player1.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
-            (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
-            draw_player(player1, 1);
-    } else if (player1.joined) {
-        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, WHITE, box_char);
-        draw_player(player1, 1);
-    } else {
-        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, GRAY, box_char);
-    }
-
-    if (player2.dead) {
-        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, RED, box_char);
-        if (player2.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
-            (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
-            surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
-            draw_player(player2, 2);
-    } else if (player2.joined) {
-        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, WHITE, box_char);
-        surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
-            draw_player(player2, 2);
-    } else {
-        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, GRAY, box_char);
-    }
-
-    if (player3.dead) {
-        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, RED, box_char);
-        if (player3.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
-            (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
-            draw_player(player3, 3);
-    } else if (player3.joined) {
-        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, WHITE, box_char);
-            draw_player(player3, 3);
-    } else {
-        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, GRAY, box_char);
-    }
+//    for (int32_t i = 0; i < ROWS; ++i) {
+//        for (int32_t j = 0; j < COLUMNS; ++j) {
+//            int32_t x = 1 + (j * 13);
+//            int32_t y = 1 + (i * 12);
+//            int32_t w = 12;
+//            int32_t h = 12;
+//
+////            std::cout << zero_texture.get_surface_rect(count, 0)->x << ", " << zero_texture.get_surface_rect(count, 0)->y << "\n";
+//            switch (bit_blocks[i][j]) {
+//                case UNFLIPPED:
+//                    surf_draw_surf(box, &unflipped_texture, x, y);
+//                    break;
+//                case FLIPPED:
+//                    surf_draw_surf(box, &flipped_texture, x, y);
+//                    break;
+//                case ERR_BLOCK:
+//                    surf_draw_surf(box, &error_texture, x, y);
+//                    break;
+//            }
+//        }
+//    }
+//    char box_char[2] = {'!' - 64, 0};
+//    if (player0.dead) {
+//        gpu_print_text(FRONT_BUFFER, 58, 13, RED, DARK_RED, box_char);
+//        if (player0.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+//            (player0.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
+//            draw_player(player0, 0);
+//    } else if (player0.joined) {
+//        gpu_print_text(FRONT_BUFFER, 58, 13, RED, WHITE, box_char);
+//        draw_player(player0, 0);
+//    } else {
+//        gpu_print_text(FRONT_BUFFER, 58, 13, RED, GRAY, box_char);
+//    }
+//
+//    if (player1.dead) {
+//        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, RED, box_char);
+//        if (player1.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+//            (player1.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
+//            draw_player(player1, 1);
+//    } else if (player1.joined) {
+//        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, WHITE, box_char);
+//        draw_player(player1, 1);
+//    } else {
+//        gpu_print_text(FRONT_BUFFER, 71, 13, BLUE, GRAY, box_char);
+//    }
+//
+//    if (player2.dead) {
+//        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, RED, box_char);
+//        if (player2.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+//            (player2.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
+//            surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+//            draw_player(player2, 2);
+//    } else if (player2.joined) {
+//        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, WHITE, box_char);
+//        surf_draw_rectangle(box, (player2.x - 1) / 1000 - 41, (player2.y - 1) / 1000 - 34, 7, 9, WHITE);
+//            draw_player(player2, 2);
+//    } else {
+//        gpu_print_text(FRONT_BUFFER, 84, 13, GREEN, GRAY, box_char);
+//    }
+//
+//    if (player3.dead) {
+//        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, RED, box_char);
+//        if (player3.death_time + DEATH_BLINK_SPEED * 4 > timer_get_ms() &&
+//            (player3.death_time - timer_get_ms()) % DEATH_BLINK_SPEED * 2 < DEATH_BLINK_SPEED)
+//            draw_player(player3, 3);
+//    } else if (player3.joined) {
+//        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, WHITE, box_char);
+//            draw_player(player3, 3);
+//    } else {
+//        gpu_print_text(FRONT_BUFFER, 97, 13, YELLOW, GRAY, box_char);
+//    }
 
 
 //    if (player0.joined && !player0.dead)
