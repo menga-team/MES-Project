@@ -21,12 +21,6 @@
 #include "flipped.m3if.asset"
 #include "error.m3if.asset"
 #include "player.m3if.asset"
-#include "menu1.m3if.asset"
-#include "menu2.m3if.asset"
-#include "menu3.m3if.asset"
-#include "menu4.m3if.asset"
-#include "pause1.m3if.asset"
-#include "pause2.m3if.asset"
 
 #define FPS 60
 #define FRAMETIME ((1.0/FPS)*1000)
@@ -186,12 +180,6 @@ Surface unflipped_texture;
 Surface flipped_texture;
 Surface error_texture;
 Surface player_texture;
-Surface menu1_texture;
-Surface menu2_texture;
-Surface menu3_texture;
-Surface menu4_texture;
-Surface pause1_texture;
-Surface pause2_texture;
 Surface *box;
 
 void handle_input(struct player *p1, int32_t player_id) {
@@ -608,7 +596,7 @@ void generate_mesh() {
 }
 
 
-int32_t get_new_bit_delay() {
+int get_new_bit_delay() {
     return MAX(MAX_NEW_BIT_DELAY - (cycles * 40 - cycles), MIN_NEW_BIT_DELAY);
 }
 
@@ -1067,12 +1055,6 @@ uint8_t start(void) {
     flipped_texture = surf_create_from_memory(12, 12, ASSET_FLIPPED_M3IF);
     error_texture = surf_create_from_memory(12, 12, ASSET_ERROR_M3IF);
     player_texture = surf_create_from_memory(70, 36, ASSET_PLAYER_M3IF);
-    menu1_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_MENU1_M3IF);
-    menu2_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_MENU2_M3IF);
-    menu3_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_MENU3_M3IF);
-    menu4_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_MENU4_M3IF);
-    pause1_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_PAUSE1_M3IF);
-    pause2_texture = surf_create_from_memory(1 + (COLUMNS * 13), 2 + (ROWS * 12), ASSET_PAUSE2_M3IF);
     rng_init();
     gpu_update_palette(palette);
     player0.x = 77000 - (7000 * 3);
@@ -1140,7 +1122,7 @@ uint8_t start(void) {
                 end_flash();
             }
         } else {
-            printf("Error\n");
+//            printf("Error\n");
         }
 
         update_laser_shots();
